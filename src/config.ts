@@ -45,10 +45,10 @@ enabled = true
 # Run when Herdr creates a new worktree.
 on_worktree_created = true
 
-# Run "magictree gc" when Herdr removes a worktree, releasing its port block and
-# removing the compose containers and volumes labelled for it. Herdr deletes the
-# checkout before the event fires, so "magictree down" cannot run at that point;
-# services that magictree started as host processes are not reclaimed.
+# Run "magictree gc" when Herdr removes a worktree: releases its port block and
+# removes the compose containers, volumes, and host processes recorded for it.
+# Herdr deletes the checkout before the event fires, so "magictree down" cannot
+# run at that point; gc works from magictree's own state dir instead.
 on_worktree_removed = true
 
 # Behavior when the worktree's repository has no magictree.toml:

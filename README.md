@@ -46,10 +46,10 @@ enabled = true
 # Run when Herdr creates a new worktree.
 on_worktree_created = true
 
-# Run "magictree gc" when Herdr removes a worktree, releasing its port block and
-# removing the compose containers and volumes labelled for it. Herdr deletes the
-# checkout before the event fires, so "magictree down" cannot run at that point;
-# services that magictree started as host processes are not reclaimed.
+# Run "magictree gc" when Herdr removes a worktree: releases its port block and
+# removes the compose containers, volumes, and host processes recorded for it.
+# Herdr deletes the checkout before the event fires, so "magictree down" cannot
+# run at that point; gc works from magictree's own state dir instead.
 on_worktree_removed = true
 
 # Behavior when the worktree's repository has no magictree.toml:
@@ -116,35 +116,30 @@ HERDR_WORKSPACE_ID=<workspace id> \
 
 When Herdr removes a worktree it fires `worktree.removed` **after deleting the
 checkout** — verified against the live event, which reports the path as already gone.
-That rules out `magictree down`: magictree stops host services from pid files under
-`<checkout>/.magictree` and resolves the manifest from the checkout, so with the
-directory removed it can only fail. `down --volumes` fails for the same reason.
+That rules out `magictree down`: magictree stops host services from pid files it keeps for
+the worktree and resolves the manifest from the checkout, so with the directory removed it
+can only fail. `down --volumes` fails for the same reason.
 
-What the hook runs instead is `magictree gc --cwd <repository root>`, which is built for
-exactly this situation. It:
+What the hook runs instead is `magictree gc --cwd <repository root>`, which works from
+magictree's own state dir and reclaims everything the removed worktree left behind:
 
-- releases the port block assigned to the removed worktree,
-- removes the compose containers **and volumes** labelled for it (so `--volumes`
-  semantics are preserved for compose services),
-- is scoped to the repository, so other repositories' resources are never touched.
+- **host processes** started from the checkout, stopped by the pid files magictree keeps
+  in `~/.local/state/magictree/worktrees/<repo>/<worktree>/run/`,
+- **compose containers and volumes** labelled for it, so `--volumes` semantics are
+  preserved for compose services,
+- the **port block** assigned to it.
 
-The plugin then forgets its state record for that worktree and leaves the run log in
-place as the transcript. Nothing is run, and no toast is shown, for a worktree this
-plugin never started anything for — so removals in repositories without a
+All three are scoped to the repository, so other repositories — and live worktrees of this
+one — are never touched. The plugin then forgets its state record for that worktree and
+leaves the run log in place as the transcript. Nothing is run, and no toast is shown, for a
+worktree this plugin never started anything for, so removals in repositories without a
 `magictree.toml` cost nothing.
 
-**The gap: host-process services.** A service whose magictree target is a host process
-(a dev server started from the checkout) is not reachable once the checkout is gone —
-its pid file went with the directory, and `gc` only knows about compose. Such a process
-keeps running and holds its port. To avoid it, stop the stack before removing the
-worktree:
-
-```sh
-magictree down --volumes --cwd <worktree>   # while the checkout still exists
-```
-
-or use `magictree rm --force --volumes --cwd <repo>` instead of
-`herdr worktree remove`, which stops the stack first and then removes the worktree.
+This needs a magictree build that keeps runtime state outside the checkout. An older build
+keeps pid files inside `<worktree>/.magictree`, where they are deleted along with the
+checkout; against such a build the hook still reclaims port blocks and compose resources,
+and host processes survive it. `grep teardown ~/.local/state/herdr/plugins/magictree/plugin.log`
+shows which of the three each removal actually reclaimed.
 
 Set `on_worktree_removed = false` to leave every removal to you.
 
@@ -184,13 +179,12 @@ herdr plugin log list --plugin magictree --limit 10
   `magictree down --cwd <worktree>` stops the stack.
 - **The repository is not onboarded.** The plugin reports the three commands to run:
   `magictree discover`, `magictree init`, then re-run the `up` action.
-- **A dev server is still running after a worktree was removed.** That is the
-  host-process gap described in [Cleanup on removal](#cleanup-on-removal): the checkout
-  is deleted before the hook fires, so magictree cannot read the pid file any more. Stop
-  the stack before removing the worktree next time.
-- **Cleanup did nothing.** `grep teardown ~/.local/state/herdr/plugins/magictree/plugin.log`
-  shows the `gc` command and its output for every removal, including the ones it
-  deliberately skipped.
+- **A dev server is still running after a worktree was removed.** Check
+  `grep teardown ~/.local/state/herdr/plugins/magictree/plugin.log`: if the removal reports
+  no `stopping <service> (pid …)`, the worktree's stack was not recorded here, or magictree
+  predates the state layout described in [Cleanup on removal](#cleanup-on-removal).
+- **Cleanup did nothing.** The same log line shows the `gc` command and its output for
+  every removal, including the ones it deliberately skipped.
 
 ## Roadmap
 
@@ -198,7 +192,3 @@ A richer TUI — following the run log, running the health probe, `docker compos
 -p <slug> exec` into compose services, and opening a service URL in a new Herdr tab or
 pane — consumes the same `state.json` records and the same entrypoint,
 `src/stack-pane.ts`.
-
-Closing the host-process gap in removal cleanup needs the service pids, which magictree
-prints in `magictree status`; recording them at `up` time would let the removal hook
-reap a process whose cwd is the deleted checkout.
