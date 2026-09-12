@@ -1,0 +1,33 @@
+id = "magictree"
+name = "Magictree Stacks"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Start this worktree's magictree development stack when Herdr creates a worktree"
+platforms = ["macos", "linux"]
+
+[[build]]
+command = ["bun", "install"]
+
+[[events]]
+on = "worktree.created"
+command = ["bun", "run", "src/hook.ts"]
+
+[[actions]]
+id = "up"
+title = "Magictree: start this worktree's stack"
+contexts = ["workspace"]
+command = ["bun", "run", "src/action-up.ts"]
+
+[[actions]]
+id = "stack"
+title = "Magictree: show stack status"
+contexts = ["workspace"]
+command = ["bun", "run", "src/open-stack-pane.ts"]
+
+[[panes]]
+id = "stack"
+title = "magictree"
+placement = "popup"
+width = 110
+height = "85%"
+command = ["bun", "run", "src/stack-pane.ts"]

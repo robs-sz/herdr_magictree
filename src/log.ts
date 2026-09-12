@@ -1,0 +1,18 @@
+/**
+ * The plugin's single log sink. Herdr keeps plugin command stdout in its own
+ * log, but that scrolls away and is per-invocation; this file is the durable
+ * trail a user reads when a stack fails to start. Logging must never be the
+ * reason a hook or a run dies, so every failure here is swallowed.
+ */
+import { appendFileSync } from "node:fs";
+import { pluginLogPath } from "./paths.ts";
+
+export function log(scope: string, message: string): void {
+  const line = `[${new Date().toISOString()}] ${scope} ${message}`;
+  process.stdout.write(`${line}\n`);
+  try {
+    appendFileSync(pluginLogPath(), `${line}\n`);
+  } catch {
+    // Unwritable state dir (or unset HERDR_PLUGIN_STATE_DIR): stdout is all we get.
+  }
+}
