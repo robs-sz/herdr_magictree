@@ -12,6 +12,10 @@ command = ["bun", "install"]
 on = "worktree.created"
 command = ["bun", "run", "src/hook.ts"]
 
+[[events]]
+on = "worktree.removed"
+command = ["bun", "run", "src/hook.ts"]
+
 [[actions]]
 id = "up"
 title = "Magictree: start this worktree's stack"

@@ -6,8 +6,8 @@
  * the plugin may be invoked from a popup whose cwd is anything at all, and the
  * worktree path is the only directory that matters.
  */
-import { accessSync, constants, existsSync } from "node:fs";
-import { join } from "node:path";
+import { accessSync, constants, existsSync, realpathSync } from "node:fs";
+import { dirname, isAbsolute, join } from "node:path";
 import type { Config } from "./config.ts";
 import type { Service } from "./state.ts";
 
@@ -21,6 +21,11 @@ export function portsCommand(cfg: Config, worktreePath: string): string[] {
 
 export function statusCommand(cfg: Config, worktreePath: string): string[] {
   return [cfg.magictreeBin, "status", "--cwd", worktreePath];
+}
+
+/** Takes a repository root, not a checkout: it reconciles every worktree of the repo. */
+export function gcCommand(cfg: Config, repoRoot: string): string[] {
+  return [cfg.magictreeBin, "gc", "--cwd", repoRoot];
 }
 
 const SAFE_ARG = /^[A-Za-z0-9_@%+=:,./-]+$/;
@@ -57,6 +62,26 @@ function git(worktreePath: string, args: string[]): string | null {
 
 export function repoRoot(worktreePath: string): string | null {
   return git(worktreePath, ["rev-parse", "--show-toplevel"]);
+}
+
+/**
+ * The main repository's root, shared by every worktree of that repository —
+ * what `magictree gc --cwd` needs. Deliberately not `repoRoot()`: for a linked
+ * worktree `--show-toplevel` reports the *checkout*, so gc pointed at it would
+ * reconcile nothing once that checkout is deleted.
+ */
+export function repositoryRoot(worktreePath: string): string | null {
+  const common = git(worktreePath, ["rev-parse", "--git-common-dir"]);
+  if (common === null) return null;
+  const root = dirname(isAbsolute(common) ? common : join(worktreePath, common));
+  // One spelling per repository, whichever worktree and whichever symlinked
+  // path it was reached through: git resolves the common dir, the relative
+  // fallback does not, and the two must not look like different repositories.
+  try {
+    return realpathSync(root);
+  } catch {
+    return root;
+  }
 }
 
 /** The checkout is usable: it exists and Git accepts it. */

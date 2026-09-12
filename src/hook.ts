@@ -14,6 +14,7 @@ import { loadConfig } from "./config.ts";
 import { log } from "./log.ts";
 import { lastEventPath } from "./paths.ts";
 import { notify, startStackRun } from "./start.ts";
+import { collectWorktree } from "./teardown.ts";
 import { parseWorktreeEvent, snapshotWorktreePath } from "./worktree-path.ts";
 
 const RAW_PREFIX = 200;
@@ -48,14 +49,36 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  if (!cfg.enabled || !cfg.onWorktreeCreated) {
-    log("hook", `disabled (enabled=${cfg.enabled} on_worktree_created=${cfg.onWorktreeCreated})`);
+  if (!cfg.enabled) {
+    log("hook", "disabled");
     process.exit(0);
   }
 
   const event = parseWorktreeEvent(eventJson ?? undefined);
   if (event === null) {
     log("hook", `ignored event: ${(eventJson ?? "<unset>").slice(0, RAW_PREFIX)}`);
+    process.exit(0);
+  }
+
+  if (event.kind === "removed") {
+    if (!cfg.onWorktreeRemoved) {
+      log("hook", `worktree removal hook disabled; leaving ${event.path} alone`);
+      process.exit(0);
+    }
+    log("hook", `remove ${event.path} (workspace ${event.workspaceId ?? "-"})`);
+    const teardown = collectWorktree({
+      path: event.path,
+      label: event.label,
+      branch: event.branch,
+      workspaceId: event.workspaceId,
+      repoRoot: event.repoRoot,
+    });
+    log("hook", JSON.stringify(teardown));
+    process.exit(0);
+  }
+
+  if (!cfg.onWorktreeCreated) {
+    log("hook", `worktree creation hook disabled; ignoring ${event.path}`);
     process.exit(0);
   }
 

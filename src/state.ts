@@ -36,6 +36,7 @@ export type WorktreeRecord = {
   branch: string | null;
   label: string | null;
   workspace_id: string | null;
+  repo_root: string | null;
   status: RunStatus;
   started_at_ms: number;
   finished_at_ms: number | null;
@@ -59,6 +60,31 @@ export function runKey(worktreePath: string): string {
   return `${slug}-${createHash("sha256").update(worktreePath).digest("hex").slice(0, 8)}`;
 }
 
+/**
+ * Every field a record must have, so readers never have to guard for absence.
+ * `startedAt` is the finish time for a record inserted directly as terminal
+ * (no manifest, already running), so it never claims to have started *after* it
+ * finished.
+ */
+function blankRecord(key: string, path: string, startedAt: number): WorktreeRecord {
+  return {
+    key,
+    path,
+    branch: null,
+    label: null,
+    workspace_id: null,
+    repo_root: null,
+    status: "skipped",
+    started_at_ms: startedAt,
+    finished_at_ms: null,
+    pid: null,
+    log_path: logPath(key),
+    command: "",
+    error: null,
+    services: [],
+  };
+}
+
 export function readState(): State {
   const path = statePath();
   if (!existsSync(path)) return { version: 1, worktrees: {} };
@@ -76,7 +102,17 @@ export function readState(): State {
     if (!parsed || typeof parsed !== "object" || !parsed.worktrees || typeof parsed.worktrees !== "object") {
       throw new Error("missing worktrees object");
     }
-    return { version: 1, worktrees: parsed.worktrees };
+    const worktrees: Record<string, WorktreeRecord> = {};
+    for (const [key, value] of Object.entries(parsed.worktrees)) {
+      const stored = value as Partial<WorktreeRecord>;
+      // Fills fields a record written by an older plugin version lacks.
+      worktrees[key] = {
+        ...blankRecord(key, typeof stored.path === "string" ? stored.path : "", stored.started_at_ms ?? Date.now()),
+        ...stored,
+        key,
+      };
+    }
+    return { version: 1, worktrees };
   } catch (error) {
     const quarantine = `${path}.corrupt-${Date.now()}`;
     try {
@@ -148,23 +184,7 @@ export function updateRecord(
       throw new Error(`updateRecord: new record ${key} needs a path`);
     }
 
-    const base: WorktreeRecord = existing ?? {
-      key,
-      path: patch.path as string,
-      branch: null,
-      label: null,
-      workspace_id: null,
-      status: "skipped",
-      // A record inserted directly as terminal (no manifest, already running)
-      // never ran, so it must not claim to have started after it finished.
-      started_at_ms: patch.finished_at_ms ?? Date.now(),
-      finished_at_ms: null,
-      pid: null,
-      log_path: logPath(key),
-      command: "",
-      error: null,
-      services: [],
-    };
+    const base = existing ?? blankRecord(key, patch.path as string, patch.finished_at_ms ?? Date.now());
 
     const defined: Record<string, unknown> = {};
     for (const [field, value] of Object.entries(patch)) {
@@ -180,6 +200,17 @@ export function updateRecord(
 
 export function findByWorkspace(state: State, workspaceId: string): WorktreeRecord | undefined {
   return Object.values(state.worktrees).find((record) => record.workspace_id === workspaceId);
+}
+
+/** Forgets a worktree whose checkout is gone. Returns false when there was nothing to forget. */
+export function deleteRecord(key: string): boolean {
+  return withStateLock(() => {
+    const state = readState();
+    if (!(key in state.worktrees)) return false;
+    delete state.worktrees[key];
+    writeState(state);
+    return true;
+  });
 }
 
 /** `EPERM` means the pid exists but belongs to another user: still alive. */

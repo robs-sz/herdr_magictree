@@ -11,15 +11,23 @@ import { existsSync } from "node:fs";
 import { herdrBin } from "./paths.ts";
 import { findByWorkspace, readState } from "./state.ts";
 
+export type WorktreeEventKind = "created" | "removed";
+
 export type WorktreeEvent = {
+  kind: WorktreeEventKind;
   path: string;
   branch: string | null;
   label: string | null;
   workspaceId: string | null;
   repoKey: string | null;
+  repoRoot: string | null;
 };
 
-const CREATED_EVENT = /^worktree[._]created$/;
+/** The same event arrives underscored in `data.type` and dotted in `event`. */
+const WORKTREE_KINDS: Record<string, WorktreeEventKind> = {
+  worktree_created: "created",
+  worktree_removed: "removed",
+};
 
 function asObject(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -52,24 +60,35 @@ export function envelope(rawJson: string | undefined): { event?: string; data?: 
   return result;
 }
 
+/**
+ * `null` for anything that is not a worktree creation or removal. An event that
+ * carries a path but no recognisable kind is rejected: the caller cannot tell
+ * teardown from startup, and guessing wrong either leaves a stack running or
+ * starts one for a checkout that is already gone.
+ */
 export function parseWorktreeEvent(rawJson: string | undefined): WorktreeEvent | null {
   const env = envelope(rawJson);
   const data = env.data ?? {};
 
-  const kinds = [asString(data.type), asString(env.event)].filter((k): k is string => k !== null);
-  if (kinds.length > 0 && !kinds.some((k) => CREATED_EVENT.test(k))) return null;
+  const kind = [asString(data.type), asString(env.event)]
+    .map((name) => (name === null ? null : WORKTREE_KINDS[name.replaceAll(".", "_")]))
+    .find((candidate) => candidate !== null && candidate !== undefined);
+  if (kind === undefined || kind === null) return null;
 
   const worktree = asObject(data.worktree);
   const workspace = asObject(data.workspace);
   const path = asString(worktree?.path) ?? asString(worktree?.checkout_path) ?? asString(data.path);
   if (!path || !path.startsWith("/")) return null;
 
+  const workspaceWorktree = asObject(workspace?.worktree);
   return {
+    kind,
     path,
     branch: asString(worktree?.branch),
     label: asString(worktree?.label) ?? asString(workspace?.label),
     workspaceId: asString(workspace?.workspace_id) ?? asString(data.workspace_id),
-    repoKey: asString(asObject(workspace?.worktree)?.repo_key) ?? asString(worktree?.repo_key),
+    repoKey: asString(workspaceWorktree?.repo_key) ?? asString(worktree?.repo_key),
+    repoRoot: asString(workspaceWorktree?.repo_root),
   };
 }
 

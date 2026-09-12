@@ -17,6 +17,7 @@ export type MissingManifestMode = "notify" | "skip";
 export type Config = {
   enabled: boolean;
   onWorktreeCreated: boolean;
+  onWorktreeRemoved: boolean;
   missingManifest: MissingManifestMode;
   args: string[];
   upTimeoutSecs: number;
@@ -27,6 +28,7 @@ export type Config = {
 export const DEFAULT_CONFIG: Config = {
   enabled: true,
   onWorktreeCreated: true,
+  onWorktreeRemoved: true,
   missingManifest: "notify",
   args: [],
   upTimeoutSecs: 1800,
@@ -42,6 +44,12 @@ enabled = true
 
 # Run when Herdr creates a new worktree.
 on_worktree_created = true
+
+# Run "magictree gc" when Herdr removes a worktree, releasing its port block and
+# removing the compose containers and volumes labelled for it. Herdr deletes the
+# checkout before the event fires, so "magictree down" cannot run at that point;
+# services that magictree started as host processes are not reclaimed.
+on_worktree_removed = true
 
 # Behavior when the worktree's repository has no magictree.toml:
 #   "notify" - record the worktree and report the commands to run (default)
@@ -79,6 +87,7 @@ export function ensureConfigFile(): string {
 const KNOWN_KEYS: Record<string, true> = {
   enabled: true,
   on_worktree_created: true,
+  on_worktree_removed: true,
   missing_manifest: true,
   args: true,
   up_timeout_secs: true,
@@ -141,6 +150,7 @@ export function loadConfig(): LoadedConfig {
   const config: Config = {
     enabled: readBoolean(raw, "enabled", DEFAULT_CONFIG.enabled),
     onWorktreeCreated: readBoolean(raw, "on_worktree_created", DEFAULT_CONFIG.onWorktreeCreated),
+    onWorktreeRemoved: readBoolean(raw, "on_worktree_removed", DEFAULT_CONFIG.onWorktreeRemoved),
     missingManifest: (missingManifestRaw as MissingManifestMode | undefined) ?? DEFAULT_CONFIG.missingManifest,
     args: (argsRaw as string[] | undefined) ?? [...DEFAULT_CONFIG.args],
     upTimeoutSecs: (timeoutRaw as number | undefined) ?? DEFAULT_CONFIG.upTimeoutSecs,

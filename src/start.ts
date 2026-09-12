@@ -18,6 +18,7 @@ import {
   manifestPath,
   renderCommand,
   repoRoot,
+  repositoryRoot,
   resolveBin,
   upCommand,
 } from "./magictree.ts";
@@ -201,6 +202,7 @@ export async function startStackRun(req: StartRequest): Promise<StartOutcome> {
     branch: req.branch,
     label: req.label,
     workspace_id: req.workspaceId,
+    repo_root: repositoryRoot(req.path),
     started_at_ms: Date.now(),
     finished_at_ms: null,
     pid,
