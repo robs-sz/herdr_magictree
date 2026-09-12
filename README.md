@@ -12,7 +12,7 @@ recorded state, the live `magictree status`, and the run log.
 
 It also hooks `worktree.removed` and runs `magictree gc` for the repository, which
 releases the removed worktree's port block and removes the compose containers and
-volumes labelled for it. See [Cleanup on removal](#cleanup-on-removal) for what that
+volumes of its project. See [Cleanup on removal](#cleanup-on-removal) for what that
 does and does not reach.
 
 ## Requirements
@@ -125,8 +125,8 @@ magictree's own state dir and reclaims everything the removed worktree left behi
 
 - **host processes** started from the checkout, stopped by the pid files magictree keeps
   in `~/.local/state/magictree/worktrees/<repo>/<worktree>/run/`,
-- **compose containers and volumes** labelled for it, so `--volumes` semantics are
-  preserved for compose services,
+- **compose containers and their named volumes**, found through the worktree's compose
+  project, so `--volumes` semantics are preserved for compose services,
 - the **port block** assigned to it.
 
 All three are scoped to the repository, so other repositories — and live worktrees of this
