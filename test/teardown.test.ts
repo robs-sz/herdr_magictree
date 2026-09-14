@@ -9,6 +9,7 @@ import { readState, runKey, updateRecord } from "../src/state.ts";
 let dir: string;
 let repo: string;
 let argvLog: string;
+let herdrLog: string;
 
 /** Stands in for `magictree`: records its argv and exits with `exitCode`. */
 function fakeMagictree(exitCode: number): string {
@@ -17,6 +18,19 @@ function fakeMagictree(exitCode: number): string {
     bin,
     `#!/bin/sh\nprintf '%s\\n' "$*" >> '${argvLog}'\necho "released block 25820-25821 (worktree example)"\nexit ${exitCode}\n`,
   );
+  chmodSync(bin, 0o755);
+  return bin;
+}
+
+/**
+ * Stands in for `herdr`: records one argument per line. Without this the
+ * notifications these tests provoke would be posted to the user's live Herdr
+ * session (`herdrBin()` falls back to the real binary), and only the test that
+ * asserts the argv would notice.
+ */
+function fakeHerdr(): string {
+  const bin = join(dir, "herdr");
+  writeFileSync(bin, `#!/bin/sh\nprintf '%s\\n' "$@" >> '${herdrLog}'\n`);
   chmodSync(bin, 0o755);
   return bin;
 }
@@ -40,14 +54,17 @@ beforeEach(() => {
   repo = join(dir, "repo");
   mkdirSync(repo, { recursive: true });
   argvLog = join(dir, "argv.log");
+  herdrLog = join(dir, "herdr.log");
   process.env.HERDR_PLUGIN_STATE_DIR = join(dir, "state");
   process.env.HERDR_PLUGIN_CONFIG_DIR = join(dir, "config");
+  process.env.HERDR_BIN_PATH = fakeHerdr();
 });
 
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
   delete process.env.HERDR_PLUGIN_STATE_DIR;
   delete process.env.HERDR_PLUGIN_CONFIG_DIR;
+  delete process.env.HERDR_BIN_PATH;
 });
 
 describe("collectWorktree", () => {
@@ -128,8 +145,14 @@ describe("collectWorktree", () => {
 
   test("an unreadable config is reported, not thrown", () => {
     writeConfig("not = valid = toml\n");
+
     expect(collectWorktree({ path: join(dir, "checkout"), label: null, branch: null, workspaceId: null, repoRoot: repo }).kind).toBe(
       "failed",
     );
+
+    const args = readFileSync(herdrLog, "utf8").split("\n");
+    expect(args.slice(0, 4)).toEqual(["notification", "show", "Bad config", "--body"]);
+    expect(args[4]).toContain("cannot read config.toml");
+    expect(args[4]).not.toContain(dir);
   });
 });
