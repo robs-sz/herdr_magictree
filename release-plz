@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Release this plugin: bump the version in herdr-plugin.toml, commit it, tag it,
+# push both. The manifest's `version` is the only copy of the version in this
+# repo — it is what `herdr plugin list` and the marketplace card show, so there
+# is nothing else to update alongside it.
+set -euo pipefail
+
+usage="usage: $(basename "$0") patch|minor|major|current"
+
+bump="${1-}"
+case "$bump" in
+  patch | minor | major | current) ;;
+  *)
+    echo "$usage" >&2
+    exit 2
+    ;;
+esac
+
+cd "$(dirname "$0")"
+
+if [ -n "$(git status --porcelain)" ]; then
+  echo "the working tree is dirty" >&2
+  exit 1
+fi
+
+if [ "$(git rev-parse --abbrev-ref HEAD)" != main ]; then
+  echo "not on main" >&2
+  exit 1
+fi
+
+git fetch --quiet origin main
+if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+  echo "main is not pushed" >&2
+  exit 1
+fi
+
+manifest=herdr-plugin.toml
+
+current="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$manifest" | head -1)"
+
+if [ -z "$current" ]; then
+  echo "no version in $manifest" >&2
+  exit 1
+fi
+
+if [ "$bump" = current ]; then
+  next="$current"
+else
+  IFS=. read -r major minor patch <<<"$current"
+
+  case "$bump" in
+    patch) patch=$((patch + 1)) ;;
+    minor)
+      minor=$((minor + 1))
+      patch=0
+      ;;
+    major)
+      major=$((major + 1))
+      minor=0
+      patch=0
+      ;;
+  esac
+
+  next="$major.$minor.$patch"
+fi
+
+tag="v$next"
+
+if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+  echo "$tag is already tagged" >&2
+  exit 1
+fi
+
+echo "releasing $tag"
+
+if [ "$next" != "$current" ]; then
+  perl -i -pe "if (!\$done && s/^version = \"\Q$current\E\"\$/version = \"$next\"/) { \$done = 1 }" "$manifest"
+  git add "$manifest"
+  git commit -m "release $tag"
+  git push origin main
+fi
+
+git tag -a "$tag" -m "$tag"
+git push origin "$tag"
