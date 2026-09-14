@@ -9,8 +9,6 @@ import { log } from "./log.ts";
 import { herdrBin } from "./paths.ts";
 import { notify } from "./start.ts";
 
-const invocationSource = process.env.HERDR_PLUGIN_ACTION_ID ?? "";
-
 const result = Bun.spawnSync(
   [
     herdrBin(),
@@ -23,8 +21,6 @@ const result = Bun.spawnSync(
     "stack",
     "--placement",
     "popup",
-    "--env",
-    `MAGICTREE_PANE_SOURCE=${invocationSource}`,
   ],
   { stdout: "inherit", stderr: "inherit" },
 );

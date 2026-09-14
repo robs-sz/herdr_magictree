@@ -43,8 +43,6 @@ export type StartOutcome =
 const READY_ATTEMPTS = 30;
 const READY_INTERVAL_MS = 1000;
 
-export { herdrBin };
-
 /** `null` means no config could be loaded — the user still has to hear about it. */
 export function notify(cfg: Config | null, title: string, body: string): void {
   if (title.length === 0) return;

@@ -26,7 +26,7 @@ import { dirname } from "node:path";
 import { log } from "./log.ts";
 import { logPath, runLockPath, stateLockPath, statePath } from "./paths.ts";
 
-export type RunStatus = "running" | "ready" | "failed" | "no_manifest" | "skipped" | "disabled";
+export type RunStatus = "running" | "ready" | "failed" | "no_manifest" | "skipped";
 
 export type Service = { id: string; port: number; url: string };
 
