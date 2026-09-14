@@ -101,7 +101,6 @@ async function main(): Promise<void> {
     branch: event.branch,
     label: event.label,
     workspaceId: event.workspaceId,
-    source: "event",
     trigger: "hook",
   });
   log("hook", JSON.stringify(outcome));

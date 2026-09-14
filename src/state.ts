@@ -148,7 +148,13 @@ function withStateLock<T>(fn: () => T): T {
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      if (existsSync(lock) && Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) {
+      let mtimeMs: number | null = null;
+      try {
+        mtimeMs = statSync(lock).mtimeMs;
+      } catch {
+        // The owner released between the EEXIST and the stat: retry immediately.
+      }
+      if (mtimeMs !== null && Date.now() - mtimeMs > LOCK_STALE_MS) {
         rmSync(lock, { force: true });
         continue;
       }
@@ -255,4 +261,16 @@ export function acquireRunLock(key: string): { ok: true } | { ok: false; pid: nu
 
 export function releaseRunLock(key: string): void {
   rmSync(runLockPath(key), { force: true });
+}
+
+/**
+ * Re-points the run lock at the runner's pid after the detached spawn. The
+ * acquiring process (hook or action) exits immediately; without this the lock
+ * names a dead pid within a second, the next trigger's staleness check steals
+ * it, and a second `magictree up` starts over the same port block.
+ */
+export function claimRunLock(key: string, pid: number): void {
+  const lock = runLockPath(key);
+  if (!existsSync(lock)) return; // Released already: nothing to re-point.
+  writeFileSync(lock, String(pid));
 }

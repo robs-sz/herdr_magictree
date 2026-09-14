@@ -49,7 +49,7 @@ function parseJsonObject(raw: string | undefined): Record<string, unknown> | nul
 }
 
 /** `{event, data}` — the EventEnvelope shape Herdr hands to event hooks. */
-export function envelope(rawJson: string | undefined): { event?: string; data?: Record<string, unknown> } {
+function envelope(rawJson: string | undefined): { event?: string; data?: Record<string, unknown> } {
   const parsed = parseJsonObject(rawJson);
   if (!parsed) return {};
   const result: { event?: string; data?: Record<string, unknown> } = {};

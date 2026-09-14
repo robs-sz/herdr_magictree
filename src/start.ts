@@ -23,14 +23,13 @@ import {
   upCommand,
 } from "./magictree.ts";
 import { herdrBin, logPath, pluginRoot } from "./paths.ts";
-import { acquireRunLock, releaseRunLock, runKey, updateRecord } from "./state.ts";
+import { acquireRunLock, claimRunLock, releaseRunLock, runKey, updateRecord } from "./state.ts";
 
 export type StartRequest = {
   path: string;
   branch: string | null;
   label: string | null;
   workspaceId: string | null;
-  source: string;
   trigger: "hook" | "action";
 };
 
@@ -45,7 +44,6 @@ const READY_INTERVAL_MS = 1000;
 
 /** `null` means no config could be loaded — the user still has to hear about it. */
 export function notify(cfg: Config | null, title: string, body: string): void {
-  if (title.length === 0) return;
   if (cfg !== null && !cfg.notify) return;
   try {
     Bun.spawnSync([herdrBin(), "notification", "show", title, "--body", body], {
@@ -99,9 +97,9 @@ export async function startStackRun(req: StartRequest): Promise<StartOutcome> {
     const reason =
       error instanceof ConfigError ? error.message : `cannot load config: ${(error as Error).message}`;
     log("start", reason);
-    updateRecord("config", { path: req.path, status: "failed", error: reason, finished_at_ms: Date.now() });
+    updateRecord(key, { path: req.path, status: "failed", error: reason, finished_at_ms: Date.now() });
     notify(null, "Bad config", reason);
-    return { kind: "failed", key: "config", reason };
+    return { kind: "failed", key, reason };
   }
   const cfg = loaded.config;
 
@@ -198,6 +196,10 @@ export async function startStackRun(req: StartRequest): Promise<StartOutcome> {
     releaseQuietly(key);
     return fail(key, req.path, req, "could not spawn runner: no pid");
   }
+
+  // The lock still names this process's pid, and this process returns right
+  // away; hand the lock to the runner so "already running" stays truthful.
+  claimRunLock(key, pid);
 
   updateRecord(key, {
     path: req.path,

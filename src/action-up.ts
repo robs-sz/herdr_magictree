@@ -31,7 +31,6 @@ async function main(): Promise<void> {
     branch: null,
     label: null,
     workspaceId,
-    source: resolved.source,
     trigger: "action",
   });
 

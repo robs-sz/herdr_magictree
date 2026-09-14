@@ -15,7 +15,7 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { ConfigError, loadConfig, type Config, type LoadedConfig } from "./config.ts";
-import { log } from "./log.ts";
+import { capLine, log } from "./log.ts";
 import { gcCommand, renderCommand, resolveBin } from "./magictree.ts";
 import { missingBinReason, notify } from "./start.ts";
 import { deleteRecord, readState, runKey, updateRecord } from "./state.ts";
@@ -34,12 +34,11 @@ export type TeardownOutcome =
   | { kind: "failed"; key: string; reason: string };
 
 const SUMMARY_LINES = 3;
-const ERROR_CAP = 120;
 
 function firstLine(text: string): string | null {
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
-    if (trimmed.length > 0) return trimmed.length > ERROR_CAP ? `${trimmed.slice(0, ERROR_CAP - 3)}...` : trimmed;
+    if (trimmed.length > 0) return capLine(trimmed);
   }
   return null;
 }

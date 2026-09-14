@@ -16,3 +16,8 @@ export function log(scope: string, message: string): void {
     // Unwritable state dir (or unset HERDR_PLUGIN_STATE_DIR): stdout is all we get.
   }
 }
+
+/** First `cap` characters, cut with `...` — the one-liner shape toasts and records share. */
+export function capLine(line: string, cap = 120): string {
+  return line.length > cap ? `${line.slice(0, cap - 3)}...` : line;
+}

@@ -9,7 +9,7 @@
 import { basename } from "node:path";
 import { readFileSync } from "node:fs";
 import { loadConfig, type Config, type LoadedConfig } from "./config.ts";
-import { log } from "./log.ts";
+import { capLine, log } from "./log.ts";
 import {
   onboarded,
   parsePorts,
@@ -23,7 +23,7 @@ import { missingBinReason, notify } from "./start.ts";
 import { releaseRunLock, updateRecord } from "./state.ts";
 
 const TERM_GRACE_MS = 10_000;
-const ERROR_CAP = 120;
+const PORTS_TIMEOUT_MS = 10_000;
 
 /**
  * Herdr toasts for `notification.show` live three seconds and cannot be
@@ -80,7 +80,7 @@ function lastLogLine(path: string): string {
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i]!.trim();
       if (line.length === 0) continue;
-      return line.length > ERROR_CAP ? `${line.slice(0, ERROR_CAP - 3)}...` : line;
+      return capLine(line);
     }
   } catch {
     // Unreadable run log; the caller falls back to the exit code.
@@ -163,7 +163,15 @@ async function main(): Promise<void> {
   }
 
   if (code === 0) {
-    const ports = Bun.spawnSync(portsCommand(cfg, path), { cwd: path, stdout: "pipe", stderr: "pipe" });
+    const ports = Bun.spawnSync(portsCommand(cfg, path), {
+      cwd: path,
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: PORTS_TIMEOUT_MS,
+    });
+    if (ports.exitCode !== 0 || ports.signalCode !== null) {
+      log("up", `magictree ports did not exit cleanly (exit ${ports.exitCode ?? "-"} signal ${ports.signalCode ?? "-"})`);
+    }
     const { services, unparsed } = parsePorts(ports.stdout.toString());
     for (const line of unparsed) log("up", `unparsed ports line: ${line}`);
 

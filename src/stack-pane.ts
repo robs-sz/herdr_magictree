@@ -10,6 +10,7 @@ import { basename } from "node:path";
 import { configPath, loadConfig, type Config } from "./config.ts";
 import { onboarded, renderCommand, statusCommand, upCommand } from "./magictree.ts";
 import { pluginLogPath } from "./paths.ts";
+import { missingManifestCommands } from "./start.ts";
 import { findByWorkspace, readState, runKey, type WorktreeRecord } from "./state.ts";
 import { resolveWorktreePath } from "./worktree-path.ts";
 
@@ -108,12 +109,7 @@ function render(): string {
     );
   } else if (!onboarded(path)) {
     sections.push(
-      [
-        "--- this repository has no magictree.toml ---",
-        `cd ${renderCommand([path])}`,
-        "magictree discover",
-        "magictree init",
-      ].join("\n"),
+      [`--- this repository has no magictree.toml ---`, missingManifestCommands(path)].join("\n"),
     );
   } else {
     sections.push(liveStatus(cfg, path));
