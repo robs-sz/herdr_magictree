@@ -36,7 +36,7 @@ export const DEFAULT_CONFIG: Config = {
   magictreeBin: "magictree",
 };
 
-export const DEFAULT_CONFIG_TOML = `# Herdr plugin "magictree" — https://github.com/<owner>/herdr_magictree
+export const DEFAULT_CONFIG_TOML = `# Herdr plugin "magictree" — https://github.com/robs-sz/herdr_magictree
 # Restart-free: read on every hook, action, and popup invocation.
 
 # Master switch for the automatic hook. Manual actions still work when false.
