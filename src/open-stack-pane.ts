@@ -34,6 +34,6 @@ if (code !== 0) {
   log("action", `plugin pane open exited ${code}`);
   // Always announced: the user asked for the popup, so a silent failure is worse
   // than a toast for someone who turned off automatic run notifications.
-  notify(null, "magictree: cannot open status pane", "see plugin log for the Herdr output");
+  notify(null, "Status pane failed", "see the plugin log for details");
 }
 process.exit(code);

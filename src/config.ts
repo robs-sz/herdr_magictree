@@ -52,7 +52,7 @@ on_worktree_created = true
 on_worktree_removed = true
 
 # Behavior when the worktree's repository has no magictree.toml:
-#   "notify" - record the worktree and report the commands to run (default)
+#   "notify" - record the worktree and report that it needs onboarding (default)
 #   "skip"   - record nothing about it
 missing_manifest = "notify"
 
@@ -110,7 +110,7 @@ export function loadConfig(): LoadedConfig {
   try {
     raw = parse(readFileSync(path, "utf8")) as Record<string, unknown>;
   } catch (error) {
-    throw new ConfigError(`cannot read ${path}: ${(error as Error).message}`);
+    throw new ConfigError(`cannot read config.toml: ${(error as Error).message}`);
   }
 
   const warnings: string[] = [];

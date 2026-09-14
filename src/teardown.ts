@@ -13,10 +13,11 @@
  * checkout. The event carries it; the plugin's own record is the fallback.
  */
 import { existsSync } from "node:fs";
-import { ConfigError, configPath, loadConfig, type Config, type LoadedConfig } from "./config.ts";
+import { basename } from "node:path";
+import { ConfigError, loadConfig, type Config, type LoadedConfig } from "./config.ts";
 import { log } from "./log.ts";
 import { gcCommand, renderCommand, resolveBin } from "./magictree.ts";
-import { notify } from "./start.ts";
+import { missingBinReason, notify } from "./start.ts";
 import { deleteRecord, readState, runKey, updateRecord } from "./state.ts";
 
 export type TeardownRequest = {
@@ -33,7 +34,7 @@ export type TeardownOutcome =
   | { kind: "failed"; key: string; reason: string };
 
 const SUMMARY_LINES = 3;
-const ERROR_CAP = 300;
+const ERROR_CAP = 120;
 
 function firstLine(text: string): string | null {
   for (const line of text.split("\n")) {
@@ -52,7 +53,7 @@ export function collectWorktree(req: TeardownRequest): TeardownOutcome {
   } catch (error) {
     const reason = error instanceof ConfigError ? error.message : `cannot load config: ${(error as Error).message}`;
     log("teardown", reason);
-    notify(null, "magictree: bad config", `${reason}\n(${configPath()})`);
+    notify(null, "Bad config", reason);
     return { kind: "failed", key, reason };
   }
   const cfg: Config = loaded.config;
@@ -72,8 +73,8 @@ export function collectWorktree(req: TeardownRequest): TeardownOutcome {
   }
 
   if (resolveBin(cfg) === null) {
-    const reason = `magictree not found: ${cfg.magictreeBin} (set magictree_bin in ${loaded.path})`;
-    notify(cfg, "magictree: magictree missing", reason);
+    const reason = missingBinReason(cfg.magictreeBin);
+    notify(cfg, "Magictree not found", reason);
     return { kind: "failed", key, reason };
   }
 
@@ -99,7 +100,7 @@ export function collectWorktree(req: TeardownRequest): TeardownOutcome {
   if (proc.exitCode !== 0) {
     const reason = firstLine(proc.stderr.toString()) ?? `magictree gc exited with code ${proc.exitCode}`;
     updateRecord(key, { status: "failed", finished_at_ms: Date.now(), pid: null, error: reason });
-    notify(cfg, "magictree: cleanup failed", `${req.label ?? req.path} — ${reason}`);
+    notify(cfg, "Cleanup failed", `${req.label ?? basename(req.path)} — ${reason}`);
     log("teardown", `failed ${req.path}: ${reason}`);
     return { kind: "failed", key, reason };
   }
@@ -107,8 +108,13 @@ export function collectWorktree(req: TeardownRequest): TeardownOutcome {
   // The checkout is gone, so the record describes nothing that exists any more.
   // The run log is left on disk as the transcript.
   deleteRecord(key);
+  const label = req.label ?? req.branch ?? basename(req.path);
   const summary = lines.length > 0 ? lines.slice(0, SUMMARY_LINES).join("; ") : "nothing to reclaim";
-  notify(cfg, "magictree: worktree cleaned up", `${req.label ?? req.branch ?? req.path} — ${summary}`);
+  notify(
+    cfg,
+    "Worktree cleaned up",
+    `${label} — ${lines.length > 0 ? "ports and containers released" : "nothing to reclaim"}`,
+  );
   log("teardown", `collected ${req.path} via ${renderCommand(argv)} (${summary})`);
   return { kind: "reclaimed", key, repoRoot, lines };
 }

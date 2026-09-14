@@ -10,8 +10,8 @@
  */
 import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { dirname, join } from "node:path";
-import { ConfigError, configPath, loadConfig, type Config, type LoadedConfig } from "./config.ts";
+import { basename, dirname, join } from "node:path";
+import { ConfigError, loadConfig, type Config, type LoadedConfig } from "./config.ts";
 import { log } from "./log.ts";
 import {
   isWorktreeReady,
@@ -59,6 +59,11 @@ export function notify(cfg: Config | null, title: string, body: string): void {
   }
 }
 
+/** One wording for all three call sites, carrying no config path into a toast. */
+export function missingBinReason(bin: string): string {
+  return `${bin} not found — set magictree_bin in the plugin config`;
+}
+
 export function missingManifestCommands(path: string): string {
   return [`cd ${renderCommand([path])}`, "magictree discover", "magictree init"].join("\n");
 }
@@ -97,7 +102,7 @@ export async function startStackRun(req: StartRequest): Promise<StartOutcome> {
       error instanceof ConfigError ? error.message : `cannot load config: ${(error as Error).message}`;
     log("start", reason);
     updateRecord("config", { path: req.path, status: "failed", error: reason, finished_at_ms: Date.now() });
-    notify(null, "magictree: bad config", `${reason}\n(${configPath()})`);
+    notify(null, "Bad config", reason);
     return { kind: "failed", key: "config", reason };
   }
   const cfg = loaded.config;
@@ -108,8 +113,8 @@ export async function startStackRun(req: StartRequest): Promise<StartOutcome> {
   }
 
   if (resolveBin(cfg) === null) {
-    const reason = `magictree not found: ${cfg.magictreeBin} (set magictree_bin in ${loaded.path})`;
-    notify(cfg, "magictree: magictree missing", reason);
+    const reason = missingBinReason(cfg.magictreeBin);
+    notify(cfg, "Magictree not found", reason);
     return fail(key, req.path, req, reason);
   }
 
@@ -151,7 +156,7 @@ export async function startStackRun(req: StartRequest): Promise<StartOutcome> {
       command: commands,
       error: null,
     });
-    notify(cfg, "magictree: repository not onboarded", commands);
+    notify(cfg, "Not onboarded", "magictree not initialized — run magictree discover, then magictree init");
     return { kind: "no_manifest", key, commands };
   }
 
@@ -211,7 +216,7 @@ export async function startStackRun(req: StartRequest): Promise<StartOutcome> {
     error: null,
   });
 
-  notify(cfg, "magictree: starting stack", `${req.label ?? req.branch ?? req.path} — ${req.path}`);
+  notify(cfg, "Starting stack", req.label ?? req.branch ?? basename(req.path));
   log("start", `started ${req.path} as pid ${pid} (log ${runLog})`);
   return { kind: "started", key, pid, logPath: runLog };
 }

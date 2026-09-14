@@ -24,8 +24,11 @@ herdr plugin link .
 | `worktree.created` | runs `magictree up` in the background and toasts the outcome |
 | `worktree.removed` | runs `magictree gc` for the repository: releases the worktree's port block and removes its compose containers, volumes and host processes |
 
-A repository with no `magictree.toml` is reported with the commands to onboard it, rather
-than started, unless `missing_manifest = "skip"`.
+A repository with no `magictree.toml` is reported as needing onboarding — the popup shows
+the commands to run — rather than started, unless `missing_manifest = "skip"`.
+
+A bootstrap that outlives a minute also toasts `Stack still starting` at 1m and every 5m
+after that, because a Herdr toast is visible for three seconds.
 
 ## Configuration
 

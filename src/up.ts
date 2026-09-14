@@ -19,11 +19,28 @@ import {
   upCommand,
 } from "./magictree.ts";
 import { logPath } from "./paths.ts";
-import { notify } from "./start.ts";
+import { missingBinReason, notify } from "./start.ts";
 import { releaseRunLock, updateRecord } from "./state.ts";
 
 const TERM_GRACE_MS = 10_000;
-const ERROR_CAP = 300;
+const ERROR_CAP = 120;
+
+/**
+ * Herdr toasts for `notification.show` live three seconds and cannot be
+ * replaced while visible, so reassurance is sparse: one at a minute, then one
+ * every five. Anything faster only collides with its predecessor.
+ */
+const HEARTBEAT_FIRST_MS = 60_000;
+const HEARTBEAT_EVERY_MS = 300_000;
+
+/** `12s`, `2m`, `1m05s` — the elapsed part of a heartbeat body. */
+function elapsedText(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return seconds === 0 ? `${minutes}m` : `${minutes}m${String(seconds).padStart(2, "0")}s`;
+}
 
 /** Exit code, or `null` when the promise outlived `ms`. */
 async function settle(promise: Promise<number>, ms: number): Promise<number | null> {
@@ -34,6 +51,27 @@ async function settle(promise: Promise<number>, ms: number): Promise<number | nu
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * `magictree up` can take minutes, and the start toast is gone after three
+ * seconds, so a long bootstrap looks like nothing happening. Emit one
+ * "still starting" toast per threshold until the run settles.
+ */
+function startHeartbeat(cfg: Config, label: string): () => void {
+  const startedAt = Date.now();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const schedule = (delay: number): void => {
+    timer = setTimeout(() => {
+      notify(cfg, "Stack still starting", `${label} — ${elapsedText(Date.now() - startedAt)}`);
+      log("up", `heartbeat at ${elapsedText(Date.now() - startedAt)}`);
+      schedule(HEARTBEAT_EVERY_MS);
+    }, delay);
+  };
+  schedule(HEARTBEAT_FIRST_MS);
+  return () => {
+    if (timer !== null) clearTimeout(timer);
+  };
 }
 
 function lastLogLine(path: string): string {
@@ -59,7 +97,7 @@ function finish(
   error: string,
 ): never {
   updateRecord(key, { path, status: "failed", finished_at_ms: Date.now(), pid: null, error });
-  notify(cfg, title, `${error} (log: ${logPath(key)})`);
+  notify(cfg, title, error);
   releaseRunLock(key);
   log("up", `failed ${path}: ${error}`);
   process.exit(1);
@@ -82,7 +120,7 @@ async function main(): Promise<void> {
   try {
     loaded = loadConfig();
   } catch (error) {
-    finish(key, path, null, "magictree: stack failed", `${label} — ${(error as Error).message}`);
+    finish(key, path, null, "Stack failed", `${label} — ${(error as Error).message}`);
   }
   const cfg: Config = loaded.config;
 
@@ -99,8 +137,8 @@ async function main(): Promise<void> {
   });
 
   if (resolveBin(cfg) === null) {
-    const reason = `magictree not found: ${cfg.magictreeBin} (set magictree_bin in ${loaded.path})`;
-    finish(key, path, cfg, "magictree: magictree missing", reason);
+    const reason = missingBinReason(cfg.magictreeBin);
+    finish(key, path, cfg, "Magictree not found", reason);
   }
 
   const proc = Bun.spawn(upCommand(cfg, path), {
@@ -110,12 +148,18 @@ async function main(): Promise<void> {
   });
 
   const timeoutMs = cfg.upTimeoutSecs * 1000;
-  const code = await settle(proc.exited, timeoutMs);
+  const stopHeartbeat = startHeartbeat(cfg, label);
+  let code: number | null;
+  try {
+    code = await settle(proc.exited, timeoutMs);
+  } finally {
+    stopHeartbeat();
+  }
 
   if (code === null) {
     proc.kill("SIGTERM");
     if ((await settle(proc.exited, TERM_GRACE_MS)) === null) proc.kill("SIGKILL");
-    finish(key, path, cfg, "magictree: stack failed", `${label} — timed out after ${cfg.upTimeoutSecs}s`);
+    finish(key, path, cfg, "Stack failed", `${label} — timed out after ${cfg.upTimeoutSecs}s`);
   }
 
   if (code === 0) {
@@ -135,19 +179,16 @@ async function main(): Promise<void> {
 
     const summary =
       services.length > 0
-        ? `${services.length} service${services.length === 1 ? "" : "s"} — ${services
-            .slice(0, 3)
-            .map((service) => service.url)
-            .join(", ")}`
-        : "stack up";
-    notify(cfg, "magictree: stack ready", `${label} — ${summary}`);
+        ? `${services.length} service${services.length === 1 ? "" : "s"} up — magictree status to see the ports`
+        : "stack up — magictree status to see the ports";
+    notify(cfg, "Stack ready", summary);
     releaseRunLock(key);
     log("up", `ready ${path}: ${summary}`);
     process.exit(0);
   }
 
   const detail = lastLogLine(runLog) || `magictree up exited with code ${code}`;
-  finish(key, path, cfg, "magictree: stack failed", `${label} — ${onboarded(path) ? detail : `not onboarded: ${detail}`}`);
+  finish(key, path, cfg, "Stack failed", `${label} — ${onboarded(path) ? detail : `not onboarded: ${detail}`}`);
 }
 
 void main();

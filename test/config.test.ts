@@ -54,8 +54,16 @@ describe("loadConfig", () => {
     expect(() => loadConfig()).toThrow(/up_timeout_secs must be an integer >= 1, got 0/);
   });
 
-  test("malformed TOML reports the config path", () => {
+  test("malformed TOML names config.toml without leaking its absolute path", () => {
     writeConfig("enabled = \n");
-    expect(() => loadConfig()).toThrow(new RegExp(`cannot read ${configPath()}`));
+    let message = "";
+    try {
+      loadConfig();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      message = (error as Error).message;
+    }
+    expect(message).toContain("cannot read config.toml");
+    expect(message).not.toContain(dir);
   });
 });

@@ -45,7 +45,7 @@ async function main(): Promise<void> {
   } catch (error) {
     const reason = (error as Error).message;
     log("hook", reason);
-    notify(null, "magictree: bad config", reason);
+    notify(null, "Bad config", reason);
     process.exit(0);
   }
 

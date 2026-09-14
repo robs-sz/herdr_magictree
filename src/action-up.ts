@@ -15,7 +15,7 @@ async function main(): Promise<void> {
   if (resolved === null) {
     const workspaceId = process.env.HERDR_WORKSPACE_ID ?? "unknown";
     log("action", `no worktree for workspace ${workspaceId}`);
-    notify(null, "magictree: no worktree here", `workspace ${workspaceId} is not a Git worktree`);
+    notify(null, "No worktree here", "this workspace is not a Git worktree");
     process.exit(0);
   }
 
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
   });
 
   if (outcome.kind === "skipped") {
-    notify(null, "magictree: nothing to do", outcome.reason);
+    notify(null, "Nothing to do", outcome.reason);
   }
   log("action", JSON.stringify(outcome));
   process.exit(0);
