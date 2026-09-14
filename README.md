@@ -6,7 +6,8 @@ reclaims it when Herdr removes one.
 ## Requirements
 
 - `herdr` 0.9.0 or newer
-- `magictree` on `PATH`, or `magictree_bin` pointing at it
+- `magictree` on `PATH` — `herdr plugin install` runs this as a build step and refuses to
+  register the plugin without it (`magictree_bin` overrides the binary at runtime only)
 - `bun` on `PATH`
 
 ## Install
@@ -16,6 +17,9 @@ cd /path/to/herdr_magictree
 bun install          # required: `herdr plugin link` does not run [[build]]
 herdr plugin link .
 ```
+
+`herdr plugin install` runs both `[[build]]` steps itself: `bun install`, then the check
+that `magictree` is on `PATH`.
 
 ## What it does
 

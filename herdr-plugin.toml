@@ -8,6 +8,11 @@ platforms = ["macos", "linux"]
 [[build]]
 command = ["bun", "install"]
 
+# Install-time requirement: a non-zero exit here aborts `herdr plugin install`.
+# Runs after `bun install` because it imports the plugin's config defaults.
+[[build]]
+command = ["bun", "run", "src/require-magictree.ts"]
+
 [[events]]
 on = "worktree.created"
 command = ["bun", "run", "src/hook.ts"]
