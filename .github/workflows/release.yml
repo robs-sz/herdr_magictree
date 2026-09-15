@@ -1,0 +1,100 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: package the plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tag against the manifest version
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' herdr-plugin.toml | head -1)"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match herdr-plugin.toml version $version" >&2
+            exit 1
+          fi
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Manifest build phase
+        run: bun run scripts/verify-build.ts
+
+      - name: Tests
+        run: bun test
+
+      - name: Package
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' herdr-plugin.toml | head -1)"
+          mkdir -p dist
+          git archive --format=tar.gz --prefix="herdr-magictree/" \
+            -o "dist/herdr-magictree-$version.tar.gz" HEAD
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: herdr-magictree-package
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          previous="$(git describe --tags --abbrev=0 --match 'v*' "$tag^" 2>/dev/null || true)"
+          if [ -n "$previous" ]; then
+            range="$previous..$tag"
+          else
+            range="$tag"
+          fi
+          git log --no-merges --invert-grep --grep='^release v[0-9]' \
+            --pretty='%s' "$range" | awk '
+            function bullet(list, n,   i) { for (i = 1; i <= n; i++) print "- " list[i] }
+            function strip(s) { sub(/^[a-zA-Z]+(\([^)]*\))?!?: /, "", s); return s }
+            /^feat(\([^)]*\))?!?: / { feat[++nf] = strip($0); next }
+            /^fix(\([^)]*\))?!?: / { fix[++nx] = strip($0); next }
+            /^docs?(\([^)]*\))?!?: / { docs[++nd] = strip($0); next }
+            { other[++no] = $0 }
+            END {
+              if (nf) { print "### Features"; bullet(feat, nf); print "" }
+              if (nx) { print "### Bug Fixes"; bullet(fix, nx); print "" }
+              if (nd) { print "### Documentation"; bullet(docs, nd); print "" }
+              if (no) { print "### Other Changes"; bullet(other, no); print "" }
+            }' > "$RUNNER_TEMP/notes.md"
+          if [ -n "$previous" ]; then
+            printf '**Full Changelog**: %s/%s/compare/%s...%s\n' \
+              "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$previous" "$tag" \
+              >> "$RUNNER_TEMP/notes.md"
+          fi
+          gh release view "$tag" > /dev/null 2>&1 ||
+            gh release create "$tag" --verify-tag --notes-file "$RUNNER_TEMP/notes.md"
+          gh release upload "$tag" dist/*.tar.gz --clobber
