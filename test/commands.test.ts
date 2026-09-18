@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_CONFIG, type Config } from "../src/config.ts";
-import { renderCommand, upCommand } from "../src/magictree.ts";
+import { downCommand, renderCommand, upCommand } from "../src/magictree.ts";
 import { missingManifestCommands } from "../src/start.ts";
 
 const cfg: Config = { ...DEFAULT_CONFIG, args: ["--app", "web"] };
@@ -8,6 +8,11 @@ const cfg: Config = { ...DEFAULT_CONFIG, args: ["--app", "web"] };
 describe("command construction", () => {
   test("up appends configured args before the explicit cwd", () => {
     expect(upCommand(cfg, "/wt")).toEqual(["magictree", "up", "--app", "web", "--cwd", "/wt"]);
+  });
+
+  test("down takes the explicit cwd and no configured args", () => {
+    // `args` select services for `up`; `down` stops the whole project.
+    expect(downCommand(cfg, "/wt")).toEqual(["magictree", "down", "--cwd", "/wt"]);
   });
 
   test("the not-onboarded instructions quote a path with a space", () => {

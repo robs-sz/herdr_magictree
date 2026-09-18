@@ -27,6 +27,16 @@ title = "Magictree: start this worktree's stack"
 contexts = ["workspace"]
 command = ["bun", "run", "src/action-up.ts"]
 
+# Stop the stack before deleting the worktree: Herdr removes the checkout with
+# `git worktree remove --force`, which fails with "Directory not empty" while
+# the stack is still writing into it, and this plugin's gc only hears about a
+# removal after that deletion.
+[[actions]]
+id = "down"
+title = "Magictree: stop this worktree's stack"
+contexts = ["workspace"]
+command = ["bun", "run", "src/action-down.ts"]
+
 [[actions]]
 id = "stack"
 title = "Magictree: show stack status"
@@ -40,3 +50,11 @@ placement = "popup"
 width = 110
 height = "85%"
 command = ["bun", "run", "src/stack-pane.ts"]
+
+# Opened by the runner as a compact popup — the one surface Herdr draws with
+# the accent border regardless of focus — not by a keybinding: it is the
+# loading indicator for a `magictree up` that outlives a toast.
+[[panes]]
+id = "progress"
+title = "magictree up"
+command = ["bun", "run", "src/progress-pane.ts"]

@@ -10,7 +10,7 @@
  */
 import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { ConfigError, loadConfig, type Config, type LoadedConfig } from "./config.ts";
 import { log } from "./log.ts";
 import {
@@ -216,7 +216,8 @@ export async function startStackRun(req: StartRequest): Promise<StartOutcome> {
     error: null,
   });
 
-  notify(cfg, "Starting stack", req.label ?? req.branch ?? basename(req.path));
+  // The run announces itself: the runner opens the progress pane for it and
+  // falls back to a toast when it cannot (see `src/up.ts`).
   log("start", `started ${req.path} as pid ${pid} (log ${runLog})`);
   return { kind: "started", key, pid, logPath: runLog };
 }

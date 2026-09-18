@@ -5,11 +5,15 @@
  * `logs/<key>.log`, so `stdio: "inherit"` here is what makes the whole
  * bootstrap transcript land in the run log. This process owns the run lock and
  * is the only writer of the `ready`/`failed` terminal states.
+ *
+ * It also opens the run's progress pane, which is where a bootstrap that takes
+ * minutes becomes visible, and decides whether notifications are needed as a
+ * fallback for a pane Herdr could not open.
  */
 import { basename } from "node:path";
 import { readFileSync } from "node:fs";
 import { loadConfig, type Config, type LoadedConfig } from "./config.ts";
-import { capLine, log } from "./log.ts";
+import { capLine, elapsedText, log } from "./log.ts";
 import {
   onboarded,
   parsePorts,
@@ -19,6 +23,7 @@ import {
   upCommand,
 } from "./magictree.ts";
 import { logPath } from "./paths.ts";
+import { openProgressPane } from "./open-progress-pane.ts";
 import { missingBinReason, notify } from "./start.ts";
 import { releaseRunLock, updateRecord } from "./state.ts";
 
@@ -26,21 +31,14 @@ const TERM_GRACE_MS = 10_000;
 const PORTS_TIMEOUT_MS = 10_000;
 
 /**
- * Herdr toasts for `notification.show` live three seconds and cannot be
- * replaced while visible, so reassurance is sparse: one at a minute, then one
- * every five. Anything faster only collides with its predecessor.
+ * The fallback voice for a run whose progress pane could not open (no
+ * foreground client to draw in, a modal already up, no workspace to split).
+ * Herdr toasts live three seconds and cannot be replaced while visible, so
+ * reassurance is sparse: one at a minute, then one every five. Anything faster
+ * only collides with its predecessor.
  */
 const HEARTBEAT_FIRST_MS = 60_000;
 const HEARTBEAT_EVERY_MS = 300_000;
-
-/** `12s`, `2m`, `1m05s` — the elapsed part of a heartbeat body. */
-function elapsedText(ms: number): string {
-  const total = Math.floor(ms / 1000);
-  const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  if (minutes === 0) return `${seconds}s`;
-  return seconds === 0 ? `${minutes}m` : `${minutes}m${String(seconds).padStart(2, "0")}s`;
-}
 
 /** Exit code, or `null` when the promise outlived `ms`. */
 async function settle(promise: Promise<number>, ms: number): Promise<number | null> {
@@ -55,8 +53,8 @@ async function settle(promise: Promise<number>, ms: number): Promise<number | nu
 
 /**
  * `magictree up` can take minutes, and the start toast is gone after three
- * seconds, so a long bootstrap looks like nothing happening. Emit one
- * "still starting" toast per threshold until the run settles.
+ * seconds, so a run without a progress pane looks like nothing happening.
+ * Emit one "still starting" toast per threshold until the run settles.
  */
 function startHeartbeat(cfg: Config, label: string): () => void {
   const startedAt = Date.now();
@@ -141,6 +139,12 @@ async function main(): Promise<void> {
     finish(key, path, cfg, "Magictree not found", reason);
   }
 
+  // The spinner pane is the loading indicator for this run. When Herdr cannot
+  // draw one, the toasts are the only voice left, so the start announcement and
+  // the heartbeats come back.
+  const progressPane = openProgressPane(key);
+  if (!progressPane) notify(cfg, "Starting stack", label);
+
   const proc = Bun.spawn(upCommand(cfg, path), {
     cwd: path,
     env: { ...process.env },
@@ -148,12 +152,12 @@ async function main(): Promise<void> {
   });
 
   const timeoutMs = cfg.upTimeoutSecs * 1000;
-  const stopHeartbeat = startHeartbeat(cfg, label);
+  const stopHeartbeat = progressPane ? null : startHeartbeat(cfg, label);
   let code: number | null;
   try {
     code = await settle(proc.exited, timeoutMs);
   } finally {
-    stopHeartbeat();
+    stopHeartbeat?.();
   }
 
   if (code === null) {
@@ -169,7 +173,9 @@ async function main(): Promise<void> {
       stderr: "pipe",
       timeout: PORTS_TIMEOUT_MS,
     });
-    if (ports.exitCode !== 0 || ports.signalCode !== null) {
+    // Bun leaves `signalCode` undefined (not null) on a clean exit; `success`
+    // is the honest "exited cleanly" test.
+    if (!ports.success) {
       log("up", `magictree ports did not exit cleanly (exit ${ports.exitCode ?? "-"} signal ${ports.signalCode ?? "-"})`);
     }
     const { services, unparsed } = parsePorts(ports.stdout.toString());

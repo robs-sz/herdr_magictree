@@ -15,6 +15,11 @@ export function upCommand(cfg: Config, worktreePath: string): string[] {
   return [cfg.magictreeBin, "up", ...cfg.args, "--cwd", worktreePath];
 }
 
+/** Deliberately without `args`: they select services for `up`; `down` stops the project. */
+export function downCommand(cfg: Config, worktreePath: string): string[] {
+  return [cfg.magictreeBin, "down", "--cwd", worktreePath];
+}
+
 export function portsCommand(cfg: Config, worktreePath: string): string[] {
   return [cfg.magictreeBin, "ports", "--cwd", worktreePath];
 }

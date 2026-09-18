@@ -25,14 +25,20 @@ that `magictree` is on `PATH`.
 
 | Herdr event | the plugin |
 |---|---|
-| `worktree.created` | runs `magictree up` in the background and toasts the outcome |
+| `worktree.created` | runs `magictree up` in the background, showing a spinner popup until the stack is up |
 | `worktree.removed` | runs `magictree gc` for the repository: releases the worktree's port block and removes its compose containers, volumes and host processes |
 
 A repository with no `magictree.toml` is reported as needing onboarding — the popup shows
 the commands to run — rather than started, unless `missing_manifest = "skip"`.
 
-A bootstrap that outlives a minute also toasts `Stack still starting` at 1m and every 5m
-after that, because a Herdr toast is visible for three seconds.
+While a run is live, a compact 100x4 popup spins with the elapsed time and the last line
+of the run log. Herdr draws popups with its accent border, so the in-progress frame
+stands out without anything being focused, and the popup closes itself when the run
+settles — `magictree up` failing or finishing can never leave a spinner behind. A popup
+is session-modal: any keypress dismisses it while the detached run keeps going. A run
+whose popup Herdr cannot open (no foreground client, another modal already open) falls
+back to the toasts it always had: `Starting stack`, then `Stack still starting` at 1m and
+every 5m after that, because a Herdr toast is visible for three seconds.
 
 ## Configuration
 
@@ -45,7 +51,13 @@ need no restart.
 ## Actions
 
 - **Magictree: start this worktree's stack** (`up`) — starts or ensures the stack for the
-  current worktree. Idempotent: it keeps the ports the worktree already has.
+  current worktree. Idempotent: it keeps the ports the worktree already has. Shows the same
+  progress pane as the automatic hook.
+- **Magictree: stop this worktree's stack** (`down`) — runs `magictree down` for the current
+  worktree. Run this **before deleting a worktree**: Herdr removes the checkout with
+  `git worktree remove --force`, which fails with `Directory not empty` while the stack is
+  still writing into it, and this plugin's cleanup only learns about a removal after that
+  deletion.
 - **Magictree: show stack status** (`stack`) — a popup with the recorded state, the live
   `magictree status`, and the tail of the run log. Renders without a TTY under `--print`.
 
