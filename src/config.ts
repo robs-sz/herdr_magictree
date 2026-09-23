@@ -63,8 +63,8 @@ args = []
 up_timeout_secs = 1800
 
 # Show a Herdr notification when a run starts, succeeds, or fails. A run that
-# opens its progress pane announces its start there instead; the pane's own
-# failure to open falls back to the start notification.
+# reports a sidebar badge announces its start there instead; a failure to badge
+# falls back to the start notification.
 notify = true
 
 # magictree executable. Absolute path or a name resolved on PATH.

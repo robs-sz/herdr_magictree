@@ -34,12 +34,20 @@ exit 0
 }
 
 /**
- * Stands in for `herdr` (records argv, exits 0). Without it the notifications
- * these tests provoke would land in the user's live Herdr session.
+ * Stands in for `herdr`: records argv and returns malformed pane-list JSON.
+ * Other calls stay silent so notifications cannot touch a live Herdr session.
  */
 function fakeHerdr(): string {
   const bin = join(dir, "herdr");
-  writeFileSync(bin, `#!/bin/sh\nprintf '%s\\n' "$@" >> '${join(dir, "herdr.log")}'\n`);
+  writeFileSync(
+    bin,
+    `#!/bin/sh
+printf '%s\\n' "$@" >> '${join(dir, "herdr.log")}'
+if [ "$1" = pane ] && [ "$2" = list ]; then
+  printf '{"result":'
+fi
+`,
+  );
   chmodSync(bin, 0o755);
   return bin;
 }
@@ -104,6 +112,28 @@ describe("startStackRun", () => {
     expect(acquireRunLock(key)).toEqual({ ok: true });
     releaseRunLock(key);
   }, 30_000);
+  test("starts magictree when Herdr pane lookup returns malformed JSON", async () => {
+    const key = runKey(repo);
+    const outcome = await startStackRun({
+      path: repo,
+      branch: "main",
+      label: "demo",
+      workspaceId: "w-created",
+      trigger: "hook",
+    });
+    if (outcome.kind !== "started") throw new Error(`expected started, got ${JSON.stringify(outcome)}`);
+
+    // The runner is detached; fake timers cannot advance its process clock.
+    const deadline = Date.now() + 8_000;
+    let record: WorktreeRecord | undefined;
+    while (Date.now() < deadline) {
+      record = readState().worktrees[key];
+      if (record?.status === "ready" || record?.status === "failed") break;
+      await Bun.sleep(100);
+    }
+    expect(record?.status).toBe("ready");
+    expect(record?.services).toEqual([{ id: "web", port: 3000, url: "http://localhost:3000" }]);
+  }, 10_000);
 
   test("records a config failure under the worktree key, not a synthetic one", async () => {
     writeFileSync(configPath(), "up_timeout_secs = 0\n");

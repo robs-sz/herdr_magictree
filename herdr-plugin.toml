@@ -50,11 +50,3 @@ placement = "popup"
 width = 110
 height = "85%"
 command = ["bun", "run", "src/stack-pane.ts"]
-
-# Opened by the runner as a compact popup — the one surface Herdr draws with
-# the accent border regardless of focus — not by a keybinding: it is the
-# loading indicator for a `magictree up` that outlives a toast.
-[[panes]]
-id = "progress"
-title = "magictree up"
-command = ["bun", "run", "src/progress-pane.ts"]

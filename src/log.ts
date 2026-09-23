@@ -5,7 +5,7 @@
  * reason a hook or a run dies, so every failure here is swallowed.
  *
  * `capLine` and `elapsedText` live here too: they are the one-line shapes the
- * toasts, the run records and the progress pane all have to agree on.
+ * toasts, the run records and the sidebar badge all have to agree on.
  */
 import { appendFileSync } from "node:fs";
 import { pluginLogPath } from "./paths.ts";
@@ -22,15 +22,6 @@ export function log(scope: string, message: string): void {
   const line = `[${new Date().toISOString()}] ${scope} ${message}`;
   process.stdout.write(`${line}\n`);
   appendLine(line);
-}
-
-/**
- * The durable trail without the stdout copy, for processes whose stdout is a
- * UI: the progress pane paints frames there, and a log line would land in the
- * middle of one.
- */
-export function logQuiet(scope: string, message: string): void {
-  appendLine(`[${new Date().toISOString()}] ${scope} ${message}`);
 }
 
 /** First `cap` characters, cut with `...` — the one-liner shape toasts and records share. */
