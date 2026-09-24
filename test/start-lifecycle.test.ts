@@ -45,6 +45,8 @@ function fakeHerdr(): string {
 printf '%s\\n' "$@" >> '${join(dir, "herdr.log")}'
 if [ "$1" = pane ] && [ "$2" = list ]; then
   printf '%s' "$HERDR_TEST_PANE_LIST_RESPONSE"
+elif [ "$1" = pane ] && [ "$2" = resize ]; then
+  printf '%s' '{"result":{"type":"pane_resize","resize":{"changed":true}}}'
 elif [ "$1" = plugin ] && [ "$2" = pane ] && [ "$3" = open ]; then
   printf '%s' "$HERDR_TEST_PANE_OPEN_RESPONSE"
 fi
@@ -163,6 +165,7 @@ describe("startStackRun", () => {
     expect(record?.status).toBe("ready");
     const args = readFileSync(join(dir, "herdr.log"), "utf8");
     expect(args).toContain("pane\nlist\n--workspace\nw-created");
+    expect(args).toContain(`pane\nresize\n--pane\nw-created:p1\n--direction\ndown\n--amount\n1.0`);
     expect(args).toContain(
       `plugin\npane\nopen\n--plugin\nmagictree\n--entrypoint\nprogress\n--target-pane\nw-created:p1\n--placement\nsplit\n--direction\ndown\n--no-focus\n--env\nMAGICTREE_RUN_KEY=${key}`,
     );

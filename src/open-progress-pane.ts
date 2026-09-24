@@ -93,6 +93,12 @@ export function openProgressPane(key: string, workspaceId: string | null): boole
     return false;
   }
 
+  // A maximal downward resize makes Herdr clamp the bottom pane to its minimum.
+  const resized = call(["pane", "resize", "--pane", targetPane, "--direction", "down", "--amount", "1.0"]);
+  if (asObject(resized?.result)?.type !== "pane_resize") {
+    log("progress", `Herdr could not shrink progress pane ${key} to minimum height`);
+  }
+
   log("progress", `watching ${key} in an unfocused bottom split in ${workspaceId}`);
   return true;
 }

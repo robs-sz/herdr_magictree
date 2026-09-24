@@ -32,9 +32,12 @@ A repository with no `magictree.toml` is reported as needing onboarding — the 
 the commands to run — rather than started, unless `missing_manifest = "skip"`.
 
 While a run is live, an unfocused split pane opens at the bottom of the new
-workspace. It keeps a spinner, elapsed time, and the latest non-empty line from
-the run log visible until the stack reaches a terminal state. When Herdr cannot
-open the pane, notifications provide the fallback progress signal.
+workspace and resizes to Herdr's minimum pane height. It keeps a spinner,
+elapsed time, and the latest non-empty line from the run log visible until the
+stack reaches a terminal state. If Herdr cannot open the pane, notifications
+provide the fallback progress signal.
+Herdr still draws the outer border using its unfocused-pane style; plugin panes
+expose no per-pane active-border override.
 
 ## Configuration
 
