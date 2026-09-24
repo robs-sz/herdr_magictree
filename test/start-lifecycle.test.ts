@@ -34,7 +34,7 @@ exit 0
 }
 
 /**
- * Stands in for `herdr`: records argv and returns malformed pane-list JSON.
+ * Stands in for `herdr`: records argv and returns configured pane responses.
  * Other calls stay silent so notifications cannot touch a live Herdr session.
  */
 function fakeHerdr(): string {
@@ -44,7 +44,9 @@ function fakeHerdr(): string {
     `#!/bin/sh
 printf '%s\\n' "$@" >> '${join(dir, "herdr.log")}'
 if [ "$1" = pane ] && [ "$2" = list ]; then
-  printf '{"result":'
+  printf '%s' "$HERDR_TEST_PANE_LIST_RESPONSE"
+elif [ "$1" = plugin ] && [ "$2" = pane ] && [ "$3" = open ]; then
+  printf '%s' "$HERDR_TEST_PANE_OPEN_RESPONSE"
 fi
 `,
   );
@@ -61,6 +63,8 @@ beforeEach(() => {
   process.env.HERDR_PLUGIN_STATE_DIR = join(dir, "state");
   process.env.HERDR_PLUGIN_CONFIG_DIR = join(dir, "config");
   process.env.HERDR_BIN_PATH = fakeHerdr();
+  process.env.HERDR_TEST_PANE_OPEN_RESPONSE = '{"result":{"type":"plugin_pane_opened"}}';
+  process.env.HERDR_TEST_PANE_LIST_RESPONSE = '{"result":{"panes":[{"pane_id":"w-created:p1","focused":true}]}}';
   writeFileSync(configPath(), `magictree_bin = "${fakeMagictree(2)}"\n`);
 });
 
@@ -69,6 +73,8 @@ afterEach(() => {
   delete process.env.HERDR_PLUGIN_STATE_DIR;
   delete process.env.HERDR_PLUGIN_CONFIG_DIR;
   delete process.env.HERDR_BIN_PATH;
+  delete process.env.HERDR_TEST_PANE_OPEN_RESPONSE;
+  delete process.env.HERDR_TEST_PANE_LIST_RESPONSE;
 });
 
 describe("startStackRun", () => {
@@ -112,7 +118,9 @@ describe("startStackRun", () => {
     expect(acquireRunLock(key)).toEqual({ ok: true });
     releaseRunLock(key);
   }, 30_000);
-  test("starts magictree when Herdr pane lookup returns malformed JSON", async () => {
+
+  test("continues stack startup when pane lookup returns malformed JSON", async () => {
+    process.env.HERDR_TEST_PANE_LIST_RESPONSE = '{"result":';
     const key = runKey(repo);
     const outcome = await startStackRun({
       path: repo,
@@ -123,7 +131,6 @@ describe("startStackRun", () => {
     });
     if (outcome.kind !== "started") throw new Error(`expected started, got ${JSON.stringify(outcome)}`);
 
-    // The runner is detached; fake timers cannot advance its process clock.
     const deadline = Date.now() + 8_000;
     let record: WorktreeRecord | undefined;
     while (Date.now() < deadline) {
@@ -133,6 +140,33 @@ describe("startStackRun", () => {
     }
     expect(record?.status).toBe("ready");
     expect(record?.services).toEqual([{ id: "web", port: 3000, url: "http://localhost:3000" }]);
+  }, 10_000);
+
+  test("opens the progress pane below the workspace without focus", async () => {
+    const key = runKey(repo);
+    const outcome = await startStackRun({
+      path: repo,
+      branch: "main",
+      label: "demo",
+      workspaceId: "w-created",
+      trigger: "hook",
+    });
+    if (outcome.kind !== "started") throw new Error(`expected started, got ${JSON.stringify(outcome)}`);
+
+    const deadline = Date.now() + 8_000;
+    let record: WorktreeRecord | undefined;
+    while (Date.now() < deadline) {
+      record = readState().worktrees[key];
+      if (record?.status === "ready" || record?.status === "failed") break;
+      await Bun.sleep(100);
+    }
+    expect(record?.status).toBe("ready");
+    const args = readFileSync(join(dir, "herdr.log"), "utf8");
+    expect(args).toContain("pane\nlist\n--workspace\nw-created");
+    expect(args).toContain(
+      `plugin\npane\nopen\n--plugin\nmagictree\n--entrypoint\nprogress\n--target-pane\nw-created:p1\n--placement\nsplit\n--direction\ndown\n--no-focus\n--env\nMAGICTREE_RUN_KEY=${key}`,
+    );
+    expect(args).not.toContain("Starting stack");
   }, 10_000);
 
   test("records a config failure under the worktree key, not a synthetic one", async () => {

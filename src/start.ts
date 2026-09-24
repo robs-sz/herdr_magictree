@@ -216,8 +216,8 @@ export async function startStackRun(req: StartRequest): Promise<StartOutcome> {
     error: null,
   });
 
-  // The run announces itself: the runner reports a sidebar badge for it and
-  // falls back to a toast when it cannot (see `src/up.ts`).
+  // The run opens a bottom progress pane and falls back to toasts if Herdr
+  // cannot show it (see `src/up.ts`).
   log("start", `started ${req.path} as pid ${pid} (log ${runLog})`);
   return { kind: "started", key, pid, logPath: runLog };
 }

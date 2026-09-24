@@ -63,7 +63,7 @@ args = []
 up_timeout_secs = 1800
 
 # Show a Herdr notification when a run starts, succeeds, or fails. A run that
-# reports a sidebar badge announces its start there instead; a failure to badge
+# opens a progress pane announces its start there instead; failure to open it
 # falls back to the start notification.
 notify = true
 

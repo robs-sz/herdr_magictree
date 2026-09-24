@@ -50,3 +50,9 @@ placement = "popup"
 width = 110
 height = "85%"
 command = ["bun", "run", "src/stack-pane.ts"]
+
+[[panes]]
+id = "progress"
+title = "magictree progress"
+placement = "split"
+command = ["bun", "run", "src/progress-pane.ts"]

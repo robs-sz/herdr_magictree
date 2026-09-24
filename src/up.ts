@@ -6,12 +6,12 @@
  * bootstrap transcript land in the run log. This process owns the run lock and
  * is the only writer of the `ready`/`failed` terminal states.
  *
- * It also reports the run's progress as a sidebar badge, which is where a
- * bootstrap that takes minutes stays visible without taking the keyboard.
+ * It also opens an unfocused bottom pane that streams the current stage and
+ * latest log line while the bootstrap runs.
  */
 import { basename } from "node:path";
 import { loadConfig, type Config, type LoadedConfig } from "./config.ts";
-import { elapsedText, log } from "./log.ts";
+import { elapsedText, lastLogLine, log } from "./log.ts";
 import {
   onboarded,
   parsePorts,
@@ -21,21 +21,16 @@ import {
   upCommand,
 } from "./magictree.ts";
 import { logPath } from "./paths.ts";
-import { lastLogLine, startProgressBadge } from "./progress-badge.ts";
+import { openProgressPane } from "./open-progress-pane.ts";
 import { missingBinReason, notify } from "./start.ts";
 import { releaseRunLock, updateRecord } from "./state.ts";
 
 const TERM_GRACE_MS = 10_000;
 const PORTS_TIMEOUT_MS = 10_000;
 
-/** Set once the badge starts; every exit path clears the sidebar label through it. */
-let stopBadge: (() => void) | null = null;
-
 /**
- * The workspace voice that runs alongside the sidebar badge. Herdr toasts live
- * three seconds and cannot be replaced while visible, so reassurance is
- * sparse: one at a minute, then one every five. Anything faster only collides
- * with its predecessor.
+ * The pane is the continuous indicator. If Herdr cannot open it, sparse
+ * notifications keep a headless or unavailable UI informed without flooding it.
  */
 const HEARTBEAT_FIRST_MS = 60_000;
 const HEARTBEAT_EVERY_MS = 300_000;
@@ -52,10 +47,9 @@ async function settle(promise: Promise<number>, ms: number): Promise<number | nu
 }
 
 /**
- * `magictree up` can take minutes, and the start toast is gone after three
- * seconds. The sidebar badge is the live indicator, but it only shows in the
- * sidebar row; emit one "still starting" toast per threshold until the run
- * settles so a run reads as alive in the workspace too.
+ * The progress pane is the continuous indicator. If it cannot open, the start
+ * toast expires after three seconds, so emit one fallback heartbeat at a
+ * minute and then every five minutes until the run settles.
  */
 function startHeartbeat(cfg: Config, label: string): () => void {
   const startedAt = Date.now();
@@ -73,7 +67,7 @@ function startHeartbeat(cfg: Config, label: string): () => void {
   };
 }
 
-/** Terminal failure: record it, tell the user, drop the badge, drop the lock, exit non-zero. */
+/** Terminal failure: update state so the progress pane exits, notify, and release the lock. */
 function finish(
   key: string,
   path: string,
@@ -81,7 +75,6 @@ function finish(
   title: string,
   error: string,
 ): never {
-  stopBadge?.();
   updateRecord(key, { path, status: "failed", finished_at_ms: Date.now(), pid: null, error });
   notify(cfg, title, error);
   releaseRunLock(key);
@@ -127,12 +120,8 @@ async function main(): Promise<void> {
     finish(key, path, cfg, "Magictree not found", reason);
   }
 
-  // The sidebar badge is the loading indicator for this run: display-only
-  // metadata, so the keyboard stays with the user's pane. When Herdr cannot
-  // badge (no workspace, no reachable server), a start toast at least says so.
-  const startedAt = Date.now();
-  stopBadge = startProgressBadge(workspaceId, label, startedAt, lastLogLine(runLog));
-  if (stopBadge === null) notify(cfg, "Starting stack", label);
+  const progressPaneOpened = openProgressPane(key, workspaceId);
+  if (!progressPaneOpened) notify(cfg, "Starting stack", label);
 
   const proc = Bun.spawn(upCommand(cfg, path), {
     cwd: path,
@@ -141,12 +130,12 @@ async function main(): Promise<void> {
   });
 
   const timeoutMs = cfg.upTimeoutSecs * 1000;
-  const stopHeartbeat = startHeartbeat(cfg, label);
+  const stopHeartbeat = progressPaneOpened ? null : startHeartbeat(cfg, label);
   let code: number | null;
   try {
     code = await settle(proc.exited, timeoutMs);
   } finally {
-    stopHeartbeat();
+    stopHeartbeat?.();
   }
 
   if (code === null) {
@@ -185,13 +174,12 @@ async function main(): Promise<void> {
         ? `${services.length} service${services.length === 1 ? "" : "s"} up — magictree status to see the ports`
         : "stack up — magictree status to see the ports";
     notify(cfg, "Stack ready", summary);
-    stopBadge?.();
     releaseRunLock(key);
     log("up", `ready ${path}: ${summary}`);
     process.exit(0);
   }
 
-  const detail = lastLogLine(runLog)() || `magictree up exited with code ${code}`;
+  const detail = lastLogLine(runLog) || `magictree up exited with code ${code}`;
   finish(key, path, cfg, "Stack failed", `${label} — ${onboarded(path) ? detail : `not onboarded: ${detail}`}`);
 }
 

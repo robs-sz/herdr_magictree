@@ -25,20 +25,16 @@ that `magictree` is on `PATH`.
 
 | Herdr event | the plugin |
 |---|---|
-| `worktree.created` | runs `magictree up` in the background, with a sidebar badge and toasts until the stack is up |
+| `worktree.created` | runs `magictree up` in the background and opens an unfocused progress pane below the worktree's existing pane |
 | `worktree.removed` | runs `magictree gc` for the repository: releases the worktree's port block and removes its compose containers, volumes and host processes |
 
 A repository with no `magictree.toml` is reported as needing onboarding — the toasts show
 the commands to run — rather than started, unless `missing_manifest = "skip"`.
 
-While a run is live, the plugin reports a `working` state label on the run's workspace
-pane — `up <label> 2m10s — <last log line>` — which Herdr's sidebar keeps showing while
-the keyboard stays with your pane. The label is display-only metadata: it never takes
-input, never blocks a modal, and the runner clears it on every exit path, so a settled or
-failed run can never leave a stale `working` badge behind. Alongside it the same toasts
-as before appear: `Starting stack` (when no badge could be reported), then
-`Stack still starting` at 1m and every 5m after that, because a Herdr toast is visible
-for three seconds.
+While a run is live, an unfocused split pane opens at the bottom of the new
+workspace. It keeps a spinner, elapsed time, and the latest non-empty line from
+the run log visible until the stack reaches a terminal state. When Herdr cannot
+open the pane, notifications provide the fallback progress signal.
 
 ## Configuration
 
@@ -52,7 +48,7 @@ need no restart.
 
 - **Magictree: start this worktree's stack** (`up`) — starts or ensures the stack for the
   current worktree. Idempotent: it keeps the ports the worktree already has. Shows the same
-  sidebar badge as the automatic hook.
+  bottom progress pane as the automatic hook.
 - **Magictree: stop this worktree's stack** (`down`) — runs `magictree down` for the current
   worktree. Run this **before deleting a worktree**: Herdr removes the checkout with
   `git worktree remove --force`, which fails with `Directory not empty` while the stack is

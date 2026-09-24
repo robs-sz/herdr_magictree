@@ -5,9 +5,9 @@
  * reason a hook or a run dies, so every failure here is swallowed.
  *
  * `capLine` and `elapsedText` live here too: they are the one-line shapes the
- * toasts, the run records and the sidebar badge all have to agree on.
+ * toasts, run records and the progress pane all have to agree on.
  */
-import { appendFileSync } from "node:fs";
+import { appendFileSync, closeSync, openSync, readSync, statSync } from "node:fs";
 import { pluginLogPath } from "./paths.ts";
 
 function appendLine(line: string): void {
@@ -22,6 +22,36 @@ export function log(scope: string, message: string): void {
   const line = `[${new Date().toISOString()}] ${scope} ${message}`;
   process.stdout.write(`${line}\n`);
   appendLine(line);
+}
+
+/** Durable trail without stdout for commands whose output is the pane UI. */
+export function logQuiet(scope: string, message: string): void {
+  appendLine(`[${new Date().toISOString()}] ${scope} ${message}`);
+}
+
+const LOG_TAIL_BYTES = 4096;
+
+/** Read the last non-empty log line without loading the full transcript. */
+export function lastLogLine(path: string, cap = 120): string {
+  let fd: number | null = null;
+  try {
+    const size = statSync(path).size;
+    if (size === 0) return "";
+    const from = Math.max(0, size - LOG_TAIL_BYTES);
+    fd = openSync(path, "r");
+    const buffer = Buffer.alloc(size - from);
+    readSync(fd, buffer, 0, buffer.length, from);
+    const lines = buffer.toString("utf8").split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i]!.trim();
+      if (line.length > 0) return capLine(line, cap);
+    }
+  } catch {
+    // No log yet, or it is mid-write.
+  } finally {
+    if (fd !== null) closeSync(fd);
+  }
+  return "";
 }
 
 /** First `cap` characters, cut with `...` — the one-liner shape toasts and records share. */
